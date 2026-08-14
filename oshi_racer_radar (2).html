@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>推し艇レーダー</title>
+<style>
+  :root{
+    --bg:#0A1830;
+    --bg-2:#0E2140;
+    --panel:#122a4d;
+    --card:#173359;
+    --card-border:#24446f;
+    --text:#EAF2FF;
+    --text-dim:#93a9c9;
+    --gold:#F2B705;
+    --gold-dim:#8a6f1c;
+    --danger:#e1372b;
+    --lane1:#F5F5F0;
+    --lane2:#222222;
+    --lane3:#E1372B;
+    --lane4:#1C63D6;
+    --lane5:#F2C230;
+    --lane6:#2E9E4F;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 0%, #163863 0%, transparent 45%),
+      radial-gradient(circle at 100% 20%, #0d2f52 0%, transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+    line-height:1.6;
+    padding:0 0 60px;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:22px 18px 0;}
+
+  /* ---- hero / signal lights signature ---- */
+  .hero{
+    padding:26px 20px 22px;
+    border-radius:var(--radius);
+    background:linear-gradient(160deg,#0f2748,#0a1830 70%);
+    border:1px solid var(--card-border);
+    position:relative;
+    overflow:hidden;
+  }
+  .lights{display:flex;gap:8px;margin-bottom:14px;}
+  .light{
+    width:22px;height:22px;border-radius:50%;
+    border:2px solid rgba(255,255,255,0.25);
+    box-shadow:inset 0 0 4px rgba(0,0,0,0.4);
+  }
+  .light:nth-child(1){background:var(--lane1);}
+  .light:nth-child(2){background:var(--lane2);}
+  .light:nth-child(3){background:var(--lane3);}
+  .light:nth-child(4){background:var(--lane4);}
+  .light:nth-child(5){background:var(--lane5);}
+  .light:nth-child(6){background:var(--lane6);}
+  .light.on{animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 4px 1px rgba(242,183,5,0.0), inset 0 0 4px rgba(0,0,0,0.4);}
+    50%{box-shadow:0 0 10px 4px rgba(242,183,5,0.55), inset 0 0 4px rgba(0,0,0,0.4);}
+  }
+  h1{
+    margin:0 0 4px;
+    font-size:26px;
+    font-weight:900;
+    letter-spacing:0.04em;
+  }
+  .hero p{margin:0;color:var(--text-dim);font-size:13.5px;}
+
+  /* ---- generic panel/card ---- */
+  .panel{
+    margin-top:22px;
+    background:var(--panel);
+    border:1px solid var(--card-border);
+    border-radius:var(--radius);
+    padding:18px 18px 20px;
+  }
+  .panel h2{
+    margin:0 0 4px;
+    font-size:15px;
+    letter-spacing:0.06em;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    font-weight:700;
+  }
+  .panel .sub{font-size:12.5px;color:var(--text-dim);margin:0 0 14px;}
+
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    border:none;
+    border-radius:10px;
+    font-weight:700;
+  }
+  .btn-primary{
+    background:var(--gold);
+    color:#22190a;
+    padding:12px 18px;
+    font-size:14.5px;
+    letter-spacing:0.02em;
+    width:100%;
+    min-height:46px;
+  }
+  .btn-primary:disabled{opacity:0.55;cursor:default;}
+  .btn-primary:hover:not(:disabled){filter:brightness(1.06);}
+
+  #todayStatus{margin-top:12px;font-size:13px;color:var(--text-dim);min-height:18px;}
+  #todayResults{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
+
+  .row-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .row-controls .btn-primary{width:auto;flex:1;min-width:160px;}
+  .auto-toggle{
+    display:flex;align-items:center;gap:6px;
+    font-size:12.5px;color:var(--text-dim);white-space:nowrap;
+  }
+  .auto-toggle input{width:auto;accent-color:var(--gold);}
+  #countdown{color:var(--gold);font-weight:700;min-width:2.2em;display:inline-block;}
+
+  .paste-box{
+    margin-top:16px;padding-top:14px;
+    border-top:1px dashed var(--card-border);
+  }
+  .paste-box textarea{
+    width:100%;min-height:90px;
+    background:#0e2340;border:1px solid var(--card-border);
+    color:var(--text);border-radius:8px;padding:9px 10px;
+    font-size:15px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    resize:vertical;
+  }
+  .btn-secondary{
+    margin-top:8px;
+    background:transparent;
+    border:1px solid var(--card-border);
+    color:var(--text);
+    padding:11px 14px;font-size:13.5px;
+    min-height:44px;width:100%;
+  }
+  .btn-secondary:hover{border-color:var(--gold);color:var(--gold);}
+
+  .race-card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:12px 14px;
+  }
+  .race-card .race-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-size:13px;color:var(--text-dim);margin-bottom:8px;
+  }
+  .race-head b{color:var(--text);font-size:14.5px;}
+  .hit{
+    display:flex;align-items:center;gap:10px;padding:6px 0;
+    border-top:1px dashed rgba(255,255,255,0.08);
+  }
+  .hit:first-of-type{border-top:none;}
+  .lane-badge{
+    width:26px;height:26px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:13px;flex:none;
+    border:2px solid rgba(255,255,255,0.35);
+  }
+  .lane-badge.l1{background:var(--lane1);color:#111;}
+  .lane-badge.l2{background:var(--lane2);color:#fff;}
+  .lane-badge.l3{background:var(--lane3);color:#fff;}
+  .lane-badge.l4{background:var(--lane4);color:#fff;}
+  .lane-badge.l5{background:var(--lane5);color:#111;}
+  .lane-badge.l6{background:var(--lane6);color:#fff;}
+  .hit .racer-name{font-weight:700;}
+  .hit .racer-meta{color:var(--text-dim);font-size:12px;}
+
+  .empty-msg{
+    font-size:13px;color:var(--text-dim);
+    padding:14px 4px;
+  }
+  .error-msg{
+    font-size:13px;color:#ffb3a8;
+    background:rgba(225,55,43,0.12);
+    border:1px solid rgba(225,55,43,0.35);
+    border-radius:10px;padding:10px 12px;margin-top:10px;
+  }
+  .error-msg a{color:#ffd4cd;}
+
+  /* ---- favorites grid ---- */
+  .fav-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:10px;
+    margin-top:14px;
+  }
+  .fav-card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:11px 12px 10px;
+    position:relative;
+  }
+  .fav-card .no{font-size:11px;color:var(--text-dim);}
+  .fav-card .name{font-weight:700;font-size:14.5px;margin:2px 0 6px;}
+  .fav-card .tags{display:flex;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-dim);}
+  .cls-badge{
+    display:inline-block;padding:1px 7px;border-radius:20px;
+    font-weight:800;font-size:10.5px;letter-spacing:0.03em;
+  }
+  .cls-A1{background:#F2B705;color:#221a03;}
+  .cls-A2{background:#c98f16;color:#1c1102;}
+  .cls-B1{background:#2b5f9e;color:#eaf2ff;}
+  .cls-B2{background:#3a4a63;color:#eaf2ff;}
+  .remove-btn{
+    position:absolute;top:4px;right:4px;
+    background:none;color:var(--text-dim);
+    font-size:18px;line-height:1;padding:8px;border-radius:8px;
+    min-width:32px;min-height:32px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .remove-btn:hover{color:#ffb3a8;background:rgba(225,55,43,0.15);}
+
+  .empty-favs{
+    font-size:13px;color:var(--text-dim);
+    padding:20px 4px;text-align:center;
+    border:1px dashed var(--card-border);
+    border-radius:12px;
+  }
+
+  /* ---- add form ---- */
+  form.add-form{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:16px;
+  }
+  form.add-form .full{grid-column:1 / -1;}
+  label{font-size:11.5px;color:var(--text-dim);display:block;margin-bottom:4px;}
+  input,select{
+    width:100%;
+    background:#0e2340;
+    border:1px solid var(--card-border);
+    color:var(--text);
+    border-radius:8px;
+    padding:11px 10px;
+    font-size:16px;
+    font-family:inherit;
+    min-height:44px;
+  }
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px;}
+  .add-form button{
+    grid-column:1 / -1;
+    background:transparent;
+    border:1px solid var(--gold);
+    color:var(--gold);
+    padding:10px;
+    font-size:14px;
+  }
+  .add-form button:hover{background:rgba(242,183,5,0.1);}
+
+  .count-pill{
+    display:inline-block;background:rgba(242,183,5,0.14);
+    color:var(--gold);border-radius:20px;padding:2px 10px;
+    font-size:12px;font-weight:700;margin-left:8px;
+  }
+  .footnote{
+    text-align:center;color:var(--text-dim);font-size:11px;
+    margin-top:22px;padding:0 10px;
+  }
+
+  /* ---- mobile ---- */
+  @media (max-width:480px){
+    .wrap{padding:14px 12px 0;}
+    .hero{padding:20px 16px 18px;}
+    h1{font-size:22px;}
+    .light{width:18px;height:18px;}
+    .panel{padding:16px 14px 18px;margin-top:16px;}
+    .row-controls{flex-direction:column;align-items:stretch;gap:10px;}
+    .row-controls .btn-primary{width:100%;}
+    .auto-toggle{justify-content:center;}
+    form.add-form{grid-template-columns:1fr;}
+    .fav-grid{grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:8px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="lights" id="lights">
+      <div class="light"></div><div class="light"></div><div class="light"></div>
+      <div class="light"></div><div class="light"></div><div class="light"></div>
+    </div>
+    <h1>推し艇レーダー</h1>
+    <p>お気に入り選手が今日どのレースに出るか、まとめてチェック。</p>
+  </div>
+
+  <div class="panel">
+    <h2>本日のレース</h2>
+    <p class="sub">Boatrace Open API（非公式・約30分更新）から本日の出走表を取得し、お気に入り選手を照合します。10秒ごとに自動更新します。</p>
+    <div class="row-controls">
+      <button class="btn-primary" id="checkBtn">今すぐ確認</button>
+      <label class="auto-toggle">
+        <input type="checkbox" id="autoToggle" checked />
+        自動更新（10秒）<span id="countdown"></span>
+      </label>
+    </div>
+    <div id="todayStatus"></div>
+    <div id="todayResults"></div>
+
+    <div id="pasteFallback" class="paste-box" hidden>
+      <p class="sub" style="margin-top:0">
+        この環境では外部APIへの直接アクセスがブロックされている場合があります。うまく取得できないときは、
+        <a href="https://boatraceopenapi.github.io/programs/v2/today.json" target="_blank" rel="noopener">本日の出走表JSONを新しいタブで開く</a>
+        → ページ全体をコピー →下に貼り付けてください。
+      </p>
+      <textarea id="pasteArea" placeholder="ここにJSONを貼り付け"></textarea>
+      <button class="btn-secondary" id="pasteCheckBtn">貼り付けた内容で確認</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>お気に入り選手<span class="count-pill" id="favCount">0</span></h2>
+    <p class="sub">☆を外す代わりに、カード右上の×で解除できます。</p>
+    <div class="fav-grid" id="favGrid"></div>
+
+    <form class="add-form" id="addForm">
+      <div class="full">
+        <label>登番</label>
+        <input type="text" id="inNo" inputmode="numeric" placeholder="例）4011" required />
+      </div>
+      <div>
+        <label>選手名</label>
+        <input type="text" id="inName" placeholder="例）堀之内紀代子" required />
+      </div>
+      <div>
+        <label>級別</label>
+        <select id="inCls">
+          <option>A1</option><option>A2</option><option>B1</option><option>B2</option>
+        </select>
+      </div>
+      <div>
+        <label>支部</label>
+        <input type="text" id="inBranch" placeholder="例）岡山" />
+      </div>
+      <div>
+        <label>出身地</label>
+        <input type="text" id="inOrigin" placeholder="例）岡山" />
+      </div>
+      <button type="submit">＋ お気に入りに追加</button>
+    </form>
+  </div>
+
+  <p class="footnote">出走表データ提供：Boatrace Open API（非公式）。正確性は保証されません。最終確認は必ず公式サイトでお願いします。</p>
+</div>
+
+<script>
+const STORAGE_KEY = "favorite_racers";
+
+const STADIUM_NAMES = {
+  1:"桐生",2:"戸田",3:"江戸川",4:"平和島",5:"多摩川",6:"浜名湖",
+  7:"蒲郡",8:"常滑",9:"津",10:"三国",11:"びわこ",12:"住之江",
+  13:"尼崎",14:"鳴門",15:"丸亀",16:"児島",17:"宮島",18:"徳山",
+  19:"下関",20:"若松",21:"芦屋",22:"福岡",23:"唐津",24:"大村"
+};
+
+const SEED_FAVORITES = [
+  {no:"4561",name:"藤山翔大",cls:"A2",branch:"大阪",origin:"大阪"},
+  {no:"3857",name:"阿波勝哉",cls:"B1",branch:"東京",origin:"東京"},
+  {no:"4460",name:"後藤翔之",cls:"A2",branch:"東京",origin:"東京"},
+  {no:"4061",name:"萩原秀人",cls:"A1",branch:"福井",origin:"福井"},
+  {no:"4614",name:"石倉洋行",cls:"A1",branch:"福岡",origin:"福岡"},
+  {no:"3257",name:"田頭実",cls:"A2",branch:"福岡",origin:"福岡"},
+  {no:"4652",name:"酒見峻介",cls:"A2",branch:"佐賀",origin:"兵庫"},
+  {no:"4530",name:"小野生奈",cls:"A1",branch:"福岡",origin:"福岡"},
+  {no:"4804",name:"高田ひかる",cls:"A1",branch:"三重",origin:"三重"},
+  {no:"4926",name:"吉川貴仁",cls:"A1",branch:"三重",origin:"三重"},
+  {no:"3908",name:"重成一人",cls:"A1",branch:"香川",origin:"香川"},
+  {no:"4413",name:"水摩敦",cls:"A2",branch:"福岡",origin:"福岡"},
+  {no:"4571",name:"菅章哉",cls:"A1",branch:"徳島",origin:"徳島"},
+  {no:"4760",name:"山崎郡",cls:"A1",branch:"大阪",origin:"大阪"},
+  {no:"4624",name:"高田明",cls:"A1",branch:"佐賀",origin:"佐賀"},
+  {no:"4124",name:"池田雄一",cls:"A1",branch:"静岡",origin:"静岡"},
+  {no:"4811",name:"向井田佑紀",cls:"B1",branch:"広島",origin:"広島"},
+  {no:"4415",name:"下出卓矢",cls:"A2",branch:"福井",origin:"石川"},
+  {no:"4635",name:"峰重力也",cls:"B1",branch:"岡山",origin:"岡山"},
+  {no:"4011",name:"堀之内紀代子",cls:"A1",branch:"岡山",origin:"岡山"},
+  {no:"3876",name:"中辻崇人",cls:"A1",branch:"福岡",origin:"福岡"},
+  {no:"4539",name:"金子賢志",cls:"A1",branch:"群馬",origin:"群馬"},
+  {no:"4232",name:"笠雅雄",cls:"B1",branch:"福岡",origin:"福岡"},
+  {no:"3352",name:"小川晃司",cls:"B1",branch:"福岡",origin:"福岡"},
+  {no:"4794",name:"和田拓也",cls:"A1",branch:"兵庫",origin:"兵庫"},
+  {no:"4925",name:"森悠稀",cls:"A2",branch:"兵庫",origin:"兵庫"},
+  {no:"5441",name:"鈴木雄登",cls:"B2",branch:"愛知",origin:"愛知"}
+];
+
+let favorites = [];
+
+async function loadFavorites(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, false);
+    favorites = JSON.parse(res.value);
+  }catch(e){
+    // 初回：まだ保存されていないので画像から読み取った一覧を初期投入
+    favorites = SEED_FAVORITES.slice();
+    await saveFavorites();
+  }
+  renderFavorites();
+}
+
+async function saveFavorites(){
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(favorites), false);
+  }catch(e){
+    console.error("保存に失敗しました", e);
+  }
+}
+
+function renderFavorites(){
+  const grid = document.getElementById("favGrid");
+  document.getElementById("favCount").textContent = favorites.length;
+
+  if(favorites.length === 0){
+    grid.innerHTML = '<div class="empty-favs" style="grid-column:1/-1">お気に入り選手がいません。下のフォームから追加してください。</div>';
+    return;
+  }
+
+  grid.innerHTML = favorites.map((f, idx) => `
+    <div class="fav-card">
+      <button class="remove-btn" data-idx="${idx}" title="お気に入り解除">×</button>
+      <div class="no">登番 ${escapeHtml(f.no)}</div>
+      <div class="name">${escapeHtml(f.name)}</div>
+      <div class="tags">
+        <span class="cls-badge cls-${escapeHtml(f.cls)}">${escapeHtml(f.cls)}</span>
+        <span>${escapeHtml(f.branch || "-")} / ${escapeHtml(f.origin || "-")}</span>
+      </div>
+    </div>
+  `).join("");
+
+  grid.querySelectorAll(".remove-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const idx = Number(btn.dataset.idx);
+      favorites.splice(idx,1);
+      await saveFavorites();
+      renderFavorites();
+    });
+  });
+}
+
+document.getElementById("addForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const no = document.getElementById("inNo").value.trim();
+  const name = document.getElementById("inName").value.trim();
+  const cls = document.getElementById("inCls").value;
+  const branch = document.getElementById("inBranch").value.trim();
+  const origin = document.getElementById("inOrigin").value.trim();
+  if(!no || !name) return;
+
+  if(favorites.some(f=>f.no === no)){
+    alert("その登番はすでにお気に入りに登録されています。");
+    return;
+  }
+
+  favorites.push({no, name, cls, branch, origin});
+  await saveFavorites();
+  renderFavorites();
+  e.target.reset();
+  document.getElementById("inCls").value = "A1";
+});
+
+/* ---- today's races ---- */
+function laneClass(n){ return "l" + (((Number(n)-1+6)%6)+1); }
+
+function fmtTime(t){
+  if(!t) return "";
+  // 想定形式: "HH:MM" もしくは ISO文字列
+  const m = String(t).match(/(\d{1,2}):(\d{2})/);
+  return m ? `${m[1].padStart(2,"0")}:${m[2]}` : String(t);
+}
+
+let consecutiveFailures = 0;
+let autoTimer = null;
+let countdownTimer = null;
+let countdownValue = 10;
+const AUTO_INTERVAL_SEC = 10;
+
+/** JSONデータ（出走表オブジェクト）を受け取り、お気に入り選手のヒットを画面に描画する */
+function renderProgramsData(data){
+  const status = document.getElementById("todayStatus");
+  const resultsEl = document.getElementById("todayResults");
+
+  const races = data.programs || data.races || data.data || [];
+  if(!Array.isArray(races) || races.length === 0){
+    status.textContent = "本日の開催情報が見つかりませんでした（非開催日、または未公開の可能性があります）。";
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const favByNo = {};
+  favorites.forEach(f => favByNo[String(Number(f.no))] = f);
+
+  const hits = [];
+  races.forEach(race=>{
+    const boats = race.boats || race.racer_list || race.entries || [];
+    boats.forEach(boat=>{
+      const rNo = boat.racer_number ?? boat.racer_registration_number;
+      if(rNo === undefined || rNo === null) return;
+      const fav = favByNo[String(Number(rNo))];
+      if(fav){
+        hits.push({
+          stadium: race.race_stadium_number,
+          raceNumber: race.race_number,
+          closedAt: race.race_closed_at || race.closed_at,
+          boatNumber: boat.racer_boat_number || boat.boat_number,
+          fav
+        });
+      }
+    });
+  });
+
+  if(hits.length === 0){
+    status.textContent = "本日、お気に入り選手の出走は見つかりませんでした。";
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const groups = {};
+  hits.forEach(h=>{
+    const key = `${h.stadium}-${h.raceNumber}`;
+    if(!groups[key]) groups[key] = {stadium:h.stadium, raceNumber:h.raceNumber, closedAt:h.closedAt, hits:[]};
+    groups[key].hits.push(h);
+  });
+
+  const groupList = Object.values(groups).sort((a,b)=>{
+    if(a.closedAt && b.closedAt) return String(a.closedAt).localeCompare(String(b.closedAt));
+    return (a.stadium - b.stadium) || (a.raceNumber - b.raceNumber);
+  });
+
+  const now = new Date();
+  const stamp = now.toLocaleTimeString("ja-JP", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+  status.textContent = `お気に入り選手が出走するレースが ${groupList.length} レース見つかりました（該当選手 ${hits.length} 件）。最終更新 ${stamp}`;
+
+  resultsEl.innerHTML = groupList.map(g=>{
+    const stadiumName = STADIUM_NAMES[g.stadium] || `場コード${g.stadium}`;
+    const hitsHtml = g.hits.map(h=>`
+      <div class="hit">
+        <div class="lane-badge ${laneClass(h.boatNumber)}">${h.boatNumber ?? "?"}</div>
+        <div>
+          <div class="racer-name">${escapeHtml(h.fav.name)}</div>
+          <div class="racer-meta">登番 ${escapeHtml(h.fav.no)} ・ ${escapeHtml(h.fav.cls)}</div>
+        </div>
+      </div>
+    `).join("");
+    return `
+      <div class="race-card">
+        <div class="race-head">
+          <span><b>${stadiumName}</b> ${g.raceNumber}R</span>
+          <span>${g.closedAt ? "締切 " + fmtTime(g.closedAt) : ""}</span>
+        </div>
+        ${hitsHtml}
+      </div>
+    `;
+  }).join("");
+}
+
+async function checkToday(isAuto){
+  const btn = document.getElementById("checkBtn");
+  const status = document.getElementById("todayStatus");
+  const resultsEl = document.getElementById("todayResults");
+  const pasteFallback = document.getElementById("pasteFallback");
+
+  if(!isAuto){
+    btn.disabled = true;
+    status.textContent = "本日の出走表を取得しています…";
+    resultsEl.innerHTML = "";
+  }
+  document.getElementById("lights").querySelectorAll(".light").forEach(l=>l.classList.add("on"));
+
+  try{
+    const res = await fetch("https://boatraceopenapi.github.io/programs/v2/today.json", {cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    consecutiveFailures = 0;
+    pasteFallback.hidden = true;
+    renderProgramsData(data);
+  }catch(err){
+    console.error(err);
+    consecutiveFailures++;
+    // 自動更新中の一時的な失敗ではメッセージを頻繁に出し過ぎない
+    if(!isAuto || consecutiveFailures >= 2){
+      status.innerHTML = "";
+      resultsEl.innerHTML = `
+        <div class="error-msg">
+          出走表の自動取得に失敗しました（この環境では外部サイトへの直接通信がブロックされていることがあります）。<br>
+          下の「JSONを新しいタブで開く」からコピーして貼り付けるか、
+          <a href="https://www.boatrace.jp/" target="_blank" rel="noopener">BOATRACE公式サイト</a> で直接ご確認ください。
+        </div>`;
+      pasteFallback.hidden = false;
+    }
+  }finally{
+    if(!isAuto) btn.disabled = false;
+    document.getElementById("lights").querySelectorAll(".light").forEach(l=>l.classList.remove("on"));
+  }
+}
+
+/* ---- 貼り付けフォールバック ---- */
+document.getElementById("pasteCheckBtn").addEventListener("click", ()=>{
+  const raw = document.getElementById("pasteArea").value.trim();
+  const status = document.getElementById("todayStatus");
+  if(!raw){
+    alert("JSONを貼り付けてください。");
+    return;
+  }
+  try{
+    const data = JSON.parse(raw);
+    renderProgramsData(data);
+    document.getElementById("pasteFallback").hidden = true;
+  }catch(e){
+    status.innerHTML = '<div class="error-msg">貼り付けた内容をJSONとして読み取れませんでした。ページ全体（{ から } まで）を過不足なくコピーしてください。</div>';
+  }
+});
+
+/* ---- 自動更新（10秒ごと） ---- */
+function startAutoRefresh(){
+  stopAutoRefresh();
+  countdownValue = AUTO_INTERVAL_SEC;
+  updateCountdownLabel();
+  countdownTimer = setInterval(()=>{
+    countdownValue--;
+    if(countdownValue <= 0) countdownValue = AUTO_INTERVAL_SEC;
+    updateCountdownLabel();
+  }, 1000);
+  autoTimer = setInterval(()=>{
+    checkToday(true);
+    countdownValue = AUTO_INTERVAL_SEC;
+  }, AUTO_INTERVAL_SEC * 1000);
+}
+function stopAutoRefresh(){
+  if(autoTimer) clearInterval(autoTimer);
+  if(countdownTimer) clearInterval(countdownTimer);
+  autoTimer = null;
+  countdownTimer = null;
+  document.getElementById("countdown").textContent = "";
+}
+function updateCountdownLabel(){
+  document.getElementById("countdown").textContent = `（${countdownValue}秒後）`;
+}
+
+document.getElementById("checkBtn").addEventListener("click", ()=>{
+  checkToday(false);
+  if(document.getElementById("autoToggle").checked){
+    countdownValue = AUTO_INTERVAL_SEC;
+  }
+});
+
+document.getElementById("autoToggle").addEventListener("change", (e)=>{
+  if(e.target.checked) startAutoRefresh();
+  else stopAutoRefresh();
+});
+
+function escapeHtml(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+loadFavorites().then(()=>{
+  checkToday(false);
+  startAutoRefresh();
+});
+</script>
+</body>
+</html>
