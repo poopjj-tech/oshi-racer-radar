@@ -121,6 +121,17 @@
   .auto-toggle input{width:auto;accent-color:var(--gold);}
   #countdown{color:var(--gold);font-weight:700;min-width:2.2em;display:inline-block;}
 
+  .filter-row{
+    display:flex;align-items:center;gap:10px;
+    margin-top:14px;
+  }
+  .filter-row label{
+    font-size:12.5px;color:var(--text-dim);margin:0;white-space:nowrap;
+  }
+  .filter-row select{
+    flex:1;min-height:40px;padding:8px 10px;font-size:14px;
+  }
+
   .paste-box{
     margin-top:16px;padding-top:14px;
     border-top:1px dashed var(--card-border);
@@ -303,6 +314,12 @@
         <input type="checkbox" id="autoToggle" checked />
         自動更新（10秒）<span id="countdown"></span>
       </label>
+    </div>
+    <div class="filter-row">
+      <label for="stadiumFilter">競艇場で絞り込み</label>
+      <select id="stadiumFilter">
+        <option value="all">すべての競艇場</option>
+      </select>
     </div>
     <div id="todayStatus"></div>
     <div id="todayResults"></div>
@@ -508,18 +525,24 @@ let autoTimer = null;
 let countdownTimer = null;
 let countdownValue = 10;
 const AUTO_INTERVAL_SEC = 10;
+let lastAllHits = [];       // 直近取得分の全ヒット（フィルタ前）
+let lastHasRaces = false;   // 本日開催があったかどうか
 
-/** JSONデータ（出走表オブジェクト）を受け取り、お気に入り選手のヒットを画面に描画する */
+/** JSONデータ（出走表オブジェクト）を受け取り、お気に入り選手のヒットを算出してキャッシュし、描画する */
 function renderProgramsData(data){
   const status = document.getElementById("todayStatus");
   const resultsEl = document.getElementById("todayResults");
 
   const races = data.programs || data.races || data.data || [];
   if(!Array.isArray(races) || races.length === 0){
+    lastAllHits = [];
+    lastHasRaces = false;
     status.textContent = "本日の開催情報が見つかりませんでした（非開催日、または未公開の可能性があります）。";
     resultsEl.innerHTML = "";
+    populateStadiumFilter([]);
     return;
   }
+  lastHasRaces = true;
 
   const favByNo = {};
   favorites.forEach(f => favByNo[String(Number(f.no))] = f);
@@ -543,14 +566,63 @@ function renderProgramsData(data){
     });
   });
 
-  if(hits.length === 0){
+  lastAllHits = hits;
+  populateStadiumFilter(hits);
+  renderFilteredResults();
+}
+
+/** ヒットに含まれる競艇場からフィルタのプルダウンを更新する（現在の選択はできる限り維持） */
+function populateStadiumFilter(hits){
+  const select = document.getElementById("stadiumFilter");
+  const prevValue = select.value || "all";
+
+  const stadiumNums = [...new Set(hits.map(h => h.stadium))].sort((a,b)=>a-b);
+
+  let html = '<option value="all">すべての競艇場</option>';
+  stadiumNums.forEach(num=>{
+    const name = STADIUM_NAMES[num] || `場コード${num}`;
+    html += `<option value="${num}">${escapeHtml(name)}</option>`;
+  });
+  select.innerHTML = html;
+
+  // 直前の選択がまだ候補にあれば維持、なければ「すべて」に戻す
+  if(prevValue !== "all" && stadiumNums.some(n => String(n) === prevValue)){
+    select.value = prevValue;
+  }else{
+    select.value = "all";
+  }
+}
+
+/** キャッシュ済みの lastAllHits を、選択中の競艇場でフィルタして描画する */
+function renderFilteredResults(){
+  const status = document.getElementById("todayStatus");
+  const resultsEl = document.getElementById("todayResults");
+  const select = document.getElementById("stadiumFilter");
+  const filterValue = select ? select.value : "all";
+
+  if(!lastHasRaces){
+    return; // renderProgramsData 側で既に「非開催」メッセージを出している
+  }
+
+  const filteredHits = filterValue === "all"
+    ? lastAllHits
+    : lastAllHits.filter(h => String(h.stadium) === filterValue);
+
+  if(lastAllHits.length === 0){
     status.textContent = "本日、お気に入り選手の出走は見つかりませんでした。";
     resultsEl.innerHTML = "";
     return;
   }
 
+  if(filteredHits.length === 0){
+    const stadiumName = STADIUM_NAMES[filterValue] || filterValue;
+    status.textContent = `${stadiumName}では、本日お気に入り選手の出走は見つかりませんでした。`;
+    resultsEl.innerHTML = "";
+    return;
+  }
+
   const groups = {};
-  hits.forEach(h=>{
+  filteredHits.forEach(h=>{
     const key = `${h.stadium}-${h.raceNumber}`;
     if(!groups[key]) groups[key] = {stadium:h.stadium, raceNumber:h.raceNumber, closedAt:h.closedAt, hits:[]};
     groups[key].hits.push(h);
@@ -563,7 +635,8 @@ function renderProgramsData(data){
 
   const now = new Date();
   const stamp = now.toLocaleTimeString("ja-JP", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
-  status.textContent = `お気に入り選手が出走するレースが ${groupList.length} レース見つかりました（該当選手 ${hits.length} 件）。最終更新 ${stamp}`;
+  const filterNote = filterValue === "all" ? "" : `（${STADIUM_NAMES[filterValue] || filterValue}で絞り込み中）`;
+  status.textContent = `お気に入り選手が出走するレースが ${groupList.length} レース見つかりました（該当選手 ${filteredHits.length} 件）${filterNote}。最終更新 ${stamp}`;
 
   resultsEl.innerHTML = groupList.map(g=>{
     const stadiumName = STADIUM_NAMES[g.stadium] || `場コード${g.stadium}`;
@@ -682,6 +755,8 @@ document.getElementById("autoToggle").addEventListener("change", (e)=>{
   if(e.target.checked) startAutoRefresh();
   else stopAutoRefresh();
 });
+
+document.getElementById("stadiumFilter").addEventListener("change", renderFilteredResults);
 
 function escapeHtml(s){
   return String(s ?? "").replace(/[&<>"']/g, c => ({
