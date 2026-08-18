@@ -395,10 +395,36 @@ const SEED_FAVORITES = [
 
 let favorites = [];
 
+/* Claudeのプレビュー内では window.storage、外部サイト（GitHub Pagesなど）として
+   開いた場合は window.storage が存在しないため localStorage を使う。
+   これにより、どちらの環境で開いてもお気に入りの変更が保存される。 */
+const hasClaudeStorage = (typeof window.storage !== "undefined")
+  && window.storage
+  && typeof window.storage.get === "function";
+
+async function storageGetRaw(key){
+  if(hasClaudeStorage){
+    const res = await window.storage.get(key, false);
+    return res.value;
+  }else{
+    const v = localStorage.getItem(key);
+    if(v === null) throw new Error("not found: " + key);
+    return v;
+  }
+}
+
+async function storageSetRaw(key, value){
+  if(hasClaudeStorage){
+    await window.storage.set(key, value, false);
+  }else{
+    localStorage.setItem(key, value);
+  }
+}
+
 async function loadFavorites(){
   try{
-    const res = await window.storage.get(STORAGE_KEY, false);
-    favorites = JSON.parse(res.value);
+    const raw = await storageGetRaw(STORAGE_KEY);
+    favorites = JSON.parse(raw);
   }catch(e){
     // 初回：まだ保存されていないので画像から読み取った一覧を初期投入
     favorites = SEED_FAVORITES.slice();
@@ -409,7 +435,7 @@ async function loadFavorites(){
 
 async function saveFavorites(){
   try{
-    await window.storage.set(STORAGE_KEY, JSON.stringify(favorites), false);
+    await storageSetRaw(STORAGE_KEY, JSON.stringify(favorites));
   }catch(e){
     console.error("保存に失敗しました", e);
   }
