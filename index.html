@@ -327,7 +327,7 @@
     <div id="pasteFallback" class="paste-box" hidden>
       <p class="sub" style="margin-top:0">
         この環境では外部APIへの直接アクセスがブロックされている場合があります。うまく取得できないときは、
-        <a href="https://boatraceopenapi.github.io/programs/v2/today.json" target="_blank" rel="noopener">本日の出走表JSONを新しいタブで開く</a>
+        <a id="pasteLink" href="https://boatraceopenapi.github.io/programs/v2/today.json" target="_blank" rel="noopener">本日の出走表JSONを新しいタブで開く</a>
         → ページ全体をコピー →下に貼り付けてください。
       </p>
       <textarea id="pasteArea" placeholder="ここにJSONを貼り付け"></textarea>
@@ -535,20 +535,19 @@ function renderProgramsData(data){
   const status = document.getElementById("todayStatus");
   const resultsEl = document.getElementById("todayResults");
 
-  // 取得したデータが本当に「今日」のものか確認する（提供元が未更新の場合の切り分け用）
-  const todayStr = new Date().toLocaleDateString("sv-SE", {timeZone:"Asia/Tokyo"}); // YYYY-MM-DD
-  const dataDate = data.date || data.race_date || null;
-  const isStaleSource = !!(dataDate && String(dataDate).slice(0,10) !== todayStr);
-  lastIsStale = isStaleSource;
-  lastDataDate = dataDate;
-
   const races = data.programs || data.races || data.data || [];
+
+  // 取得したデータが本当に「今日」のものか確認する（レース単位の race_date フィールドで判定）
+  const todayIso = getJstTodayParts().iso;
+  const firstDate = races.length > 0 ? (races[0].race_date || null) : null;
+  const isStaleSource = !!(firstDate && String(firstDate).slice(0,10) !== todayIso);
+  lastIsStale = isStaleSource;
+  lastDataDate = firstDate;
+
   if(!Array.isArray(races) || races.length === 0){
     lastAllHits = [];
     lastHasRaces = false;
-    status.innerHTML = isStaleSource
-      ? `本日の開催情報が見つかりませんでした。<br><span style="color:#ffd07a">※取得したデータの日付は ${escapeHtml(dataDate)} でした（データ提供元がまだ本日分を更新していない可能性があります）。</span>`
-      : "本日の開催情報が見つかりませんでした（非開催日、または未公開の可能性があります）。";
+    status.textContent = "本日の開催情報が見つかりませんでした（非開催日の可能性があります）。";
     resultsEl.innerHTML = "";
     populateStadiumFilter([]);
     return;
@@ -675,6 +674,24 @@ function renderFilteredResults(){
   }).join("");
 }
 
+/** 日本時間（JST）における「今日」の年・月日文字列を返す */
+function getJstTodayParts(){
+  // Intl を使って確実にJSTの年月日を得る（サーバー/端末のタイムゾーンに依存しない）
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date());
+  const y = parts.find(p => p.type === "year").value;
+  const m = parts.find(p => p.type === "month").value;
+  const d = parts.find(p => p.type === "day").value;
+  return { y, m, d, ymd: `${y}${m}${d}`, iso: `${y}-${m}-${d}` };
+}
+
+/** today.json のエイリアスは切り替わりが遅れることがあるため、日付を明示したURLを使う */
+function buildProgramsUrl(){
+  const { y, ymd } = getJstTodayParts();
+  return `https://boatraceopenapi.github.io/programs/v2/${y}/${ymd}.json`;
+}
+
 async function checkToday(isAuto){
   const btn = document.getElementById("checkBtn");
   const status = document.getElementById("todayStatus");
@@ -690,9 +707,23 @@ async function checkToday(isAuto){
 
   try{
     // cache:"no-store" はブラウザ側のキャッシュしか回避できないため、
-    // CDN側のキャッシュも避けるようにタイムスタンプ付きクエリを付与する
-    const bustUrl = "https://boatraceopenapi.github.io/programs/v2/today.json?_=" + Date.now();
+    // CDN側のキャッシュも避けるようにタイムスタンプ付きクエリを付与する。
+    // today.json のエイリアスではなく日付明示のURLを使い、確実に「今日」のファイルを取得する。
+    const baseUrl = buildProgramsUrl();
+    const bustUrl = baseUrl + "?_=" + Date.now();
     const res = await fetch(bustUrl, {cache:"no-store"});
+
+    if(res.status === 404){
+      // まだ本日分のファイルが生成されていない（提供元の更新待ち）
+      lastAllHits = [];
+      lastHasRaces = false;
+      status.innerHTML = `本日（${getJstTodayParts().iso}）の出走表はまだ提供元で公開されていないようです。<br><span style="color:#8FA8C4">しばらくしてから再度お試しください。</span>`;
+      resultsEl.innerHTML = "";
+      populateStadiumFilter([]);
+      consecutiveFailures = 0;
+      pasteFallback.hidden = true;
+      return;
+    }
     if(!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     consecutiveFailures = 0;
@@ -780,6 +811,8 @@ function escapeHtml(s){
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[c]));
 }
+
+document.getElementById("pasteLink").href = buildProgramsUrl();
 
 loadFavorites().then(()=>{
   checkToday(false);
