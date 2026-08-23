@@ -692,6 +692,20 @@ function buildProgramsUrl(){
   return `https://boatraceopenapi.github.io/programs/v2/${y}/${ymd}.json`;
 }
 
+/** 今日の日付URLを優先し、まだ生成されていなければ today.json（多少遅れていても直近の最新データ）にフォールバックして取得する */
+async function fetchProgramsData(){
+  const datedUrl = buildProgramsUrl() + "?_=" + Date.now();
+  let res = await fetch(datedUrl, {cache:"no-store"});
+
+  if(res.status === 404){
+    // 本日分がまだ提供元で生成されていない → today.json にフォールバック
+    const fallbackUrl = "https://boatraceopenapi.github.io/programs/v2/today.json?_=" + Date.now();
+    res = await fetch(fallbackUrl, {cache:"no-store"});
+  }
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
 async function checkToday(isAuto){
   const btn = document.getElementById("checkBtn");
   const status = document.getElementById("todayStatus");
@@ -708,24 +722,7 @@ async function checkToday(isAuto){
   try{
     // cache:"no-store" はブラウザ側のキャッシュしか回避できないため、
     // CDN側のキャッシュも避けるようにタイムスタンプ付きクエリを付与する。
-    // today.json のエイリアスではなく日付明示のURLを使い、確実に「今日」のファイルを取得する。
-    const baseUrl = buildProgramsUrl();
-    const bustUrl = baseUrl + "?_=" + Date.now();
-    const res = await fetch(bustUrl, {cache:"no-store"});
-
-    if(res.status === 404){
-      // まだ本日分のファイルが生成されていない（提供元の更新待ち）
-      lastAllHits = [];
-      lastHasRaces = false;
-      status.innerHTML = `本日（${getJstTodayParts().iso}）の出走表はまだ提供元で公開されていないようです。<br><span style="color:#8FA8C4">しばらくしてから再度お試しください。</span>`;
-      resultsEl.innerHTML = "";
-      populateStadiumFilter([]);
-      consecutiveFailures = 0;
-      pasteFallback.hidden = true;
-      return;
-    }
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
+    const data = await fetchProgramsData();
     consecutiveFailures = 0;
     pasteFallback.hidden = true;
     renderProgramsData(data);
