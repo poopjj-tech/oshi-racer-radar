@@ -527,17 +527,28 @@ let countdownValue = 10;
 const AUTO_INTERVAL_SEC = 10;
 let lastAllHits = [];       // 直近取得分の全ヒット（フィルタ前）
 let lastHasRaces = false;   // 本日開催があったかどうか
+let lastIsStale = false;    // 取得データの日付が今日でない（提供元が未更新）かどうか
+let lastDataDate = null;
 
 /** JSONデータ（出走表オブジェクト）を受け取り、お気に入り選手のヒットを算出してキャッシュし、描画する */
 function renderProgramsData(data){
   const status = document.getElementById("todayStatus");
   const resultsEl = document.getElementById("todayResults");
 
+  // 取得したデータが本当に「今日」のものか確認する（提供元が未更新の場合の切り分け用）
+  const todayStr = new Date().toLocaleDateString("sv-SE", {timeZone:"Asia/Tokyo"}); // YYYY-MM-DD
+  const dataDate = data.date || data.race_date || null;
+  const isStaleSource = !!(dataDate && String(dataDate).slice(0,10) !== todayStr);
+  lastIsStale = isStaleSource;
+  lastDataDate = dataDate;
+
   const races = data.programs || data.races || data.data || [];
   if(!Array.isArray(races) || races.length === 0){
     lastAllHits = [];
     lastHasRaces = false;
-    status.textContent = "本日の開催情報が見つかりませんでした（非開催日、または未公開の可能性があります）。";
+    status.innerHTML = isStaleSource
+      ? `本日の開催情報が見つかりませんでした。<br><span style="color:#ffd07a">※取得したデータの日付は ${escapeHtml(dataDate)} でした（データ提供元がまだ本日分を更新していない可能性があります）。</span>`
+      : "本日の開催情報が見つかりませんでした（非開催日、または未公開の可能性があります）。";
     resultsEl.innerHTML = "";
     populateStadiumFilter([]);
     return;
@@ -636,7 +647,10 @@ function renderFilteredResults(){
   const now = new Date();
   const stamp = now.toLocaleTimeString("ja-JP", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
   const filterNote = filterValue === "all" ? "" : `（${STADIUM_NAMES[filterValue] || filterValue}で絞り込み中）`;
-  status.textContent = `お気に入り選手が出走するレースが ${groupList.length} レース見つかりました（該当選手 ${filteredHits.length} 件）${filterNote}。最終更新 ${stamp}`;
+  const staleNote = lastIsStale
+    ? `<br><span style="color:#ffd07a">※取得データの日付は ${escapeHtml(lastDataDate)} でした。今日のものではない可能性があります（データ提供元の更新待ちの可能性）。</span>`
+    : "";
+  status.innerHTML = `お気に入り選手が出走するレースが ${groupList.length} レース見つかりました（該当選手 ${filteredHits.length} 件）${filterNote}。最終更新 ${stamp}${staleNote}`;
 
   resultsEl.innerHTML = groupList.map(g=>{
     const stadiumName = STADIUM_NAMES[g.stadium] || `場コード${g.stadium}`;
@@ -675,7 +689,10 @@ async function checkToday(isAuto){
   document.getElementById("lights").querySelectorAll(".light").forEach(l=>l.classList.add("on"));
 
   try{
-    const res = await fetch("https://boatraceopenapi.github.io/programs/v2/today.json", {cache:"no-store"});
+    // cache:"no-store" はブラウザ側のキャッシュしか回避できないため、
+    // CDN側のキャッシュも避けるようにタイムスタンプ付きクエリを付与する
+    const bustUrl = "https://boatraceopenapi.github.io/programs/v2/today.json?_=" + Date.now();
+    const res = await fetch(bustUrl, {cache:"no-store"});
     if(!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     consecutiveFailures = 0;
